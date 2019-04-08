@@ -45,7 +45,7 @@ class Siamese(nn.Module):
         return travel
 
     def cal_travel_dist(self, tra1, tra2):
-        dist = F.cosine_similarity(tra1, tra2, dim=1)
+        dist = torch.abs(F.cosine_similarity(tra1, tra2, dim=1))
         return dist
 
     def loss_travel(self, imga, imgA, imgb, imgB):
@@ -57,7 +57,7 @@ class Siamese(nn.Module):
 
     def loss_sc(self,imga, imgA):
         tra_aA = self.cal_travel(imga, imgA)
-        dist_aA = torch.sum(torch.pow(tra_aA, 2), dim=1)
+        dist_aA = torch.sqrt(torch.sum(torch.pow(tra_aA, 2), dim=1) + 1e-6)
         zeros = torch.zeros_like(dist_aA).cuda()
         loss = torch.max(self.margin - dist_aA, zeros)
         loss = torch.mean(loss)

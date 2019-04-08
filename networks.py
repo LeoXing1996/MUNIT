@@ -2,6 +2,7 @@
 Copyright (C) 2018 NVIDIA Corporation.  All rights reserved.
 Licensed under the CC BY-NC-SA 4.0 license (https://creativecommons.org/licenses/by-nc-sa/4.0/legalcode).
 """
+import numpy as np
 from torch import nn
 from torch.autograd import Variable
 import torch
@@ -10,6 +11,85 @@ try:
     from itertools import izip as zip
 except ImportError: # will be 3.x series
     pass
+
+
+class Siamese(nn.Module):
+    def __init__(self, input_dim, input_size, opts):
+        super(Siamese, self).__init__()
+        dim = opts['dim']
+        travel_dim = opts['travel_dim']
+        padding_type = opts['pad_type']
+        norm_type = opts['norm']
+        activate = opts['activ']
+        n_downsample = opts['n_downsample']
+        new_size = input_size
+        self.margin = opts['margin']
+
+        model = []
+        model += [Conv2dBlock(input_dim, dim, 4, 2, 1, norm=norm_type, activation=activate, pad_type=padding_type)]
+        new_size = new_size // 2
+        for _ in range(n_downsample-1):
+            model += [Conv2dBlock(dim, dim*2, 4, 2, 1, norm=norm_type, activation=activate, pad_type=padding_type)]
+            new_size = new_size // 2
+            dim *= 2
+        model += [Flatten()]
+        flatten_dim = new_size * new_size * dim
+        model += [MLP(flatten_dim, travel_dim, dim, 2, activ=activate)]
+        self.model = nn.Sequential(*model)
+
+    def forward(self, x):
+        return self.model(x)
+
+    def cal_travel(self, img1, img2):
+        travel = self.forward(img1) - self.forward(img2)
+        return travel
+
+    def cal_travel_dist(self, tra1, tra2):
+        dist = F.cosine_similarity(tra1, tra2, dim=1)
+        return dist
+
+    def loss_travel(self, imga, imgA, imgb, imgB):
+        tra_aA = self.cal_travel(imga, imgA)
+        tra_bB = self.cal_travel(imgb, imgB)
+        dist = self.cal_travel_dist(tra_aA, tra_bB)
+        loss = torch.mean(dist)
+        return loss
+
+    def loss_sc(self,imga, imgA):
+        tra_aA = self.cal_travel(imga, imgA)
+        dist_aA = torch.sum(torch.pow(tra_aA, 2), dim=1)
+        zeros = torch.zeros_like(dist_aA).cuda()
+        loss = torch.max(self.margin - dist_aA, zeros)
+        loss = torch.mean(loss)
+        return loss
+
+    # def loss(self, imga, imgA, imgb, imgB, margin):
+    #     tra_ab = self.cal_travel(imga, imgb)
+    #     tra_AB = self.cal_travel(imgA, imgB)
+    #     loss_tra = self.loss_travel(tra_ab, tra_AB)
+    #     loss_sc = self.loss_sc(tra_ab, tra_AB, margin)
+    #     loss = self.weight_tra * loss_tra + self.weight_sc * loss_sc
+    #     log = {
+    #         'loss_tra': loss_tra,
+    #         'loss_sc': loss_sc,
+    #         'loss_total': loss
+    #     }
+    #     return loss, log
+
+    def sample(self, imga, imgA, imgb, imgB):
+        with torch.no_grad():
+            tra_ab = self.cal_travel(imga, imgb)
+            tra_AB = self.cal_travel(imgA, imgB)
+            tra_dist = self.cal_travel_dist(tra_ab, tra_AB)
+        return torch.mean(tra_dist)
+
+
+class Flatten(nn.Module):
+    def __init__(self):
+        super(Flatten, self).__init__()
+
+    def forward(self, x):
+        return x.view(x.size(0), -1)
 
 ##################################################################################
 # Discriminator

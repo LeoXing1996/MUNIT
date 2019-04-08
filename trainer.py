@@ -2,7 +2,7 @@
 Copyright (C) 2017 NVIDIA Corporation.  All rights reserved.
 Licensed under the CC BY-NC-SA 4.0 license (https://creativecommons.org/licenses/by-nc-sa/4.0/legalcode).
 """
-from networks import AdaINGen, MsImageDis, VAEGen
+from networks import AdaINGen, MsImageDis, VAEGen, Siamese
 from utils import weights_init, get_model_list, vgg_preprocess, load_vgg16, get_scheduler
 from torch.autograd import Variable
 import torch
@@ -18,6 +18,7 @@ class MUNIT_Trainer(nn.Module):
         self.gen_b = AdaINGen(hyperparameters['input_dim_b'], hyperparameters['gen'])  # auto-encoder for domain b
         self.dis_a = MsImageDis(hyperparameters['input_dim_a'], hyperparameters['dis'])  # discriminator for domain a
         self.dis_b = MsImageDis(hyperparameters['input_dim_b'], hyperparameters['dis'])  # discriminator for domain b
+        self.sia = Siamese(3, 256, hyperparameters['sia'])
         self.instancenorm = nn.InstanceNorm2d(512, affine=False)
         self.style_dim = hyperparameters['gen']['style_dim']
 
@@ -31,12 +32,16 @@ class MUNIT_Trainer(nn.Module):
         beta2 = hyperparameters['beta2']
         dis_params = list(self.dis_a.parameters()) + list(self.dis_b.parameters())
         gen_params = list(self.gen_a.parameters()) + list(self.gen_b.parameters())
+        sia_params = list(self.sia.parameters())
         self.dis_opt = torch.optim.Adam([p for p in dis_params if p.requires_grad],
                                         lr=lr, betas=(beta1, beta2), weight_decay=hyperparameters['weight_decay'])
         self.gen_opt = torch.optim.Adam([p for p in gen_params if p.requires_grad],
                                         lr=lr, betas=(beta1, beta2), weight_decay=hyperparameters['weight_decay'])
+        self.sia_opt = torch.optim.Adam([p for p in gen_params if p.requires_grad],
+                                        lr=lr, betas=(beta1, beta2), weight_decay=hyperparameters['weight_decay'])
         self.dis_scheduler = get_scheduler(self.dis_opt, hyperparameters)
         self.gen_scheduler = get_scheduler(self.gen_opt, hyperparameters)
+        self.sia_scheduler = get_scheduler(self.sia_opt, hyperparameters)
 
         # Network weight initialization
         self.apply(weights_init(hyperparameters['init']))
@@ -64,7 +69,7 @@ class MUNIT_Trainer(nn.Module):
         self.train()
         return x_ab, x_ba
 
-    def gen_update(self, x_a, x_b, hyperparameters):
+    def gen_update(self, x_a, x_b, hyperparameters, use_Sia=True):
         self.gen_opt.zero_grad()
         s_a = Variable(torch.randn(x_a.size(0), self.style_dim, 1, 1).cuda())
         s_b = Variable(torch.randn(x_b.size(0), self.style_dim, 1, 1).cuda())
@@ -83,6 +88,25 @@ class MUNIT_Trainer(nn.Module):
         # decode again (if needed)
         x_aba = self.gen_a.decode(c_a_recon, s_a_prime) if hyperparameters['recon_x_cyc_w'] > 0 else None
         x_bab = self.gen_b.decode(c_b_recon, s_b_prime) if hyperparameters['recon_x_cyc_w'] > 0 else None
+
+        # cal travel loss
+        if use_Sia and hyperparameters['batch_size'] % 2 == 0:
+            new_bz = hyperparameters['batch_size']//2
+            x_a1, x_a2 = x_a.split(split_size=new_bz, dim=0)
+            x_b1, x_b2 = x_b.split(split_size=new_bz, dim=0)
+            x_ab1, x_ab2 = x_ab.split(split_size=new_bz, dim=0)
+            x_ba1, x_ba2 = x_ba.split(split_size=new_bz, dim=0)
+            x_aba1, x_aba2 = x_aba.split(split_size=new_bz, dim=0)
+            x_bab1, x_bab2 = x_bab.split(split_size=new_bz, dim=0)
+            self.loss_gen_tra_ab = self.sia.loss_travel(x_a1, x_a2, x_ab1, x_ab2)
+            self.loss_gen_tra_aba = self.sia.loss_travel(x_ab1, x_ab2, x_aba1, x_aba2)
+            self.loss_gen_tra_ba = self.sia.loss_travel(x_b1, x_b2, x_ba1, x_ba2)
+            self.loss_gen_tra_bab = self.sia.loss_travel(x_ba1, x_ba2, x_bab1, x_bab2)
+        else:
+            self.loss_gen_tra_ab = 0
+            self.loss_gen_tra_aba = 0
+            self.loss_gen_tra_ba = 0
+            self.loss_gen_tra_bab = 0
 
         # reconstruction loss
         self.loss_gen_recon_x_a = self.recon_criterion(x_a_recon, x_a)
@@ -111,7 +135,11 @@ class MUNIT_Trainer(nn.Module):
                               hyperparameters['recon_x_cyc_w'] * self.loss_gen_cycrecon_x_a + \
                               hyperparameters['recon_x_cyc_w'] * self.loss_gen_cycrecon_x_b + \
                               hyperparameters['vgg_w'] * self.loss_gen_vgg_a + \
-                              hyperparameters['vgg_w'] * self.loss_gen_vgg_b
+                              hyperparameters['vgg_w'] * self.loss_gen_vgg_b + \
+                              hyperparameters['tra_w'] * self.loss_gen_tra_ab + \
+                              hyperparameters['tra_w'] * self.loss_gen_tra_ba + \
+                              hyperparameters['tra_w'] * self.loss_gen_tra_aba + \
+                              hyperparameters['tra_w'] * self.loss_gen_tra_bab
         self.loss_gen_total.backward()
         self.gen_opt.step()
 
@@ -160,6 +188,56 @@ class MUNIT_Trainer(nn.Module):
         self.loss_dis_total = hyperparameters['gan_w'] * self.loss_dis_a + hyperparameters['gan_w'] * self.loss_dis_b
         self.loss_dis_total.backward()
         self.dis_opt.step()
+
+    def sia_update(self, x_a, x_b, hyperparameters):
+        recon_x_cyc_w = hyperparameters['recon_x_cyc_w'] > 0
+        self.sia_opt.zero_grad()
+        s_a = Variable(torch.randn(x_a.size(0), self.style_dim, 1, 1).cuda())
+        s_b = Variable(torch.randn(x_b.size(0), self.style_dim, 1, 1).cuda())
+        c_a, s_a_prime = self.gen_a.encode(x_a)
+        c_b, s_b_prime = self.gen_b.encode(x_b)
+        # decode (within domain)
+        x_a_recon = self.gen_a.decode(c_a, s_a_prime)
+        x_b_recon = self.gen_b.decode(c_b, s_b_prime)
+        # decode (cross domain)
+        x_ba = self.gen_a.decode(c_b, s_a)
+        x_ab = self.gen_b.decode(c_a, s_b)
+        # encode again
+        c_b_recon, s_a_recon = self.gen_a.encode(x_ba)
+        c_a_recon, s_b_recon = self.gen_b.encode(x_ab)
+        # decode again (if needed)
+        x_aba = self.gen_a.decode(c_a_recon, s_a_prime) if recon_x_cyc_w  else 0
+        x_bab = self.gen_b.decode(c_b_recon, s_b_prime) if recon_x_cyc_w  else 0
+
+        # split data
+        new_bz = hyperparameters['batch_size'] // 2
+        x_a1, x_a2 = x_a.split(split_size=new_bz, dim=0)
+        x_b1, x_b2 = x_b.split(split_size=new_bz, dim=0)
+        x_ab1, x_ab2 = x_ab.detach().split(split_size=new_bz, dim=0)
+        x_ba1, x_ba2 = x_ba.detach().split(split_size=new_bz, dim=0)
+        x_aba1, x_aba2 = x_aba.detach().split(split_size=new_bz, dim=0) if recon_x_cyc_w else None
+        x_bab1, x_bab2 = x_bab.detach().split(split_size=new_bz, dim=0) if recon_x_cyc_w else None
+
+        self.loss_sia_tra_ab = self.sia.loss_travel(x_a1, x_a2, x_ab1, x_ab2)
+        self.loss_sia_tra_aba = self.sia.loss_travel(x_ab1, x_ab2, x_aba1, x_aba2) if recon_x_cyc_w else 0
+        self.loss_sia_tra_ba = self.sia.loss_travel(x_b1, x_b2, x_ba1, x_ba2)
+        self.loss_sia_tra_bab = self.sia.loss_travel(x_ba1, x_ba2, x_bab1, x_bab2) if recon_x_cyc_w else 0
+        self.loss_sia_sc_a = self.sia.loss_sc(x_a1, x_a2)
+        self.loss_sia_sc_b = self.sia.loss_sc(x_b1, x_b2)
+        self.loss_sia_sc_ab = self.sia.loss_sc(x_ab1, x_ab2)
+        self.loss_sia_sc_ba = self.sia.loss_sc(x_ba1, x_ba2)
+        self.loss_sia_sc_aba = self.sia.loss_sc(x_aba1, x_aba2) if recon_x_cyc_w else 0
+        self.loss_sia_sc_bab = self.sia.loss_sc(x_bab1, x_bab2) if recon_x_cyc_w else 0
+
+        tra_w = hyperparameters['sia_tra_w']
+        sc_w = hyperparameters['sia_sc_w']
+        self.loss_sia_total = tra_w * self.loss_sia_tra_ab + tra_w * self.loss_sia_tra_ba + \
+                              tra_w * self.loss_sia_tra_aba + tra_w * self.loss_sia_tra_bab + \
+                              sc_w * self.loss_sia_sc_a + sc_w * self.loss_sia_sc_b + \
+                              sc_w * self.loss_sia_sc_ab + sc_w * self.loss_sia_sc_ba + \
+                              sc_w * self.loss_sia_sc_aba + sc_w * self.loss_sia_sc_bab
+        self.loss_sia_total.backward()
+        self.sia_opt.step()
 
     def update_learning_rate(self):
         if self.dis_scheduler is not None:

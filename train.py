@@ -64,6 +64,7 @@ while True:
             # Main training code
             trainer.dis_update(images_a, images_b, config)
             trainer.gen_update(images_a, images_b, config)
+            trainer.sia_update(images_a, images_b, config)
             torch.cuda.synchronize()
 
         # Dump training stats in log file

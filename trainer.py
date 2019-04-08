@@ -248,6 +248,8 @@ class MUNIT_Trainer(nn.Module):
     def resume(self, checkpoint_dir, hyperparameters):
         # Load generators
         last_model_name = get_model_list(checkpoint_dir, "gen")
+        if not last_model_name:
+            return 0
         state_dict = torch.load(last_model_name)
         self.gen_a.load_state_dict(state_dict['a'])
         self.gen_b.load_state_dict(state_dict['b'])
@@ -257,13 +259,19 @@ class MUNIT_Trainer(nn.Module):
         state_dict = torch.load(last_model_name)
         self.dis_a.load_state_dict(state_dict['a'])
         self.dis_b.load_state_dict(state_dict['b'])
+        # Load siamese
+        last_model_name = get_model_list(checkpoint_dir, "sia")
+        state_dict = torch.load(last_model_name)
+        self.sia.load_state_dict(state_dict)
         # Load optimizers
         state_dict = torch.load(os.path.join(checkpoint_dir, 'optimizer.pt'))
         self.dis_opt.load_state_dict(state_dict['dis'])
         self.gen_opt.load_state_dict(state_dict['gen'])
+        self.sia_opt.load_state_dict(state_dict['sia'])
         # Reinitilize schedulers
         self.dis_scheduler = get_scheduler(self.dis_opt, hyperparameters, iterations)
         self.gen_scheduler = get_scheduler(self.gen_opt, hyperparameters, iterations)
+        self.sia_scheduler = get_scheduler(self.sia_opt, hyperparameters, iterations)
         print('Resume from iteration %d' % iterations)
         return iterations
 
@@ -271,10 +279,14 @@ class MUNIT_Trainer(nn.Module):
         # Save generators, discriminators, and optimizers
         gen_name = os.path.join(snapshot_dir, 'gen_%08d.pt' % (iterations + 1))
         dis_name = os.path.join(snapshot_dir, 'dis_%08d.pt' % (iterations + 1))
+        sia_name = os.path.join(snapshot_dir, 'sia_%08d.pt' % (iterations + 1))
         opt_name = os.path.join(snapshot_dir, 'optimizer.pt')
         torch.save({'a': self.gen_a.state_dict(), 'b': self.gen_b.state_dict()}, gen_name)
         torch.save({'a': self.dis_a.state_dict(), 'b': self.dis_b.state_dict()}, dis_name)
-        torch.save({'gen': self.gen_opt.state_dict(), 'dis': self.dis_opt.state_dict()}, opt_name)
+        torch.save(self.sia.state_dict(), sia_name)
+        torch.save({'gen': self.gen_opt.state_dict(),
+                    'dis': self.dis_opt.state_dict(),
+                    'sia': self.sia_opt.state_dict()}, opt_name)
 
 
 class UNIT_Trainer(nn.Module):

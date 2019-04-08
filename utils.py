@@ -197,7 +197,7 @@ def write_loss_new(iterations, trainer, train_writer):
                 'sc_ab': trainer.loss_sia_sc_ab, 'sc_ba': trainer.loss_sia_sc_ba,
                 'sc_aba': trainer.loss_sia_sc_aba, 'sc_bab': trainer.loss_sia_sc_bab,
                 'total': trainer.loss_sia_total}
-    
+
     train_writer.add_scalars('total_loss', total_loss, iterations)
     train_writer.add_scalars('gen_loss', gen_loss, iterations)
     train_writer.add_scalars('dis_loss', dis_loss, iterations)

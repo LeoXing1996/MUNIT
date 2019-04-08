@@ -309,7 +309,7 @@ class Decoder(nn.Module):
         self.model += [ResBlocks(n_res, dim, res_norm, activ, pad_type=pad_type)]
         # upsampling blocks
         for i in range(n_upsample):
-            self.model += [nn.Upsample(scale_factor=2),
+            self.model += [Upsample(scale_factor=2),
                            Conv2dBlock(dim, dim // 2, 5, 1, 2, norm='ln', activation=activ, pad_type=pad_type)]
             dim //= 2
         # use reflection padding in the last conv layer
@@ -318,6 +318,16 @@ class Decoder(nn.Module):
 
     def forward(self, x):
         return self.model(x)
+
+
+class Upsample(nn.Module):
+    def __init__(self, scale_factor):
+        super(Upsample, self).__init__()
+        self.scale_factor = scale_factor
+
+    def forward(self, x):
+        return nn.functional.interpolate(x, scale_factor=self.scale_factor)
+
 
 ##################################################################################
 # Sequential Models

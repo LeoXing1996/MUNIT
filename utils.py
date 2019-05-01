@@ -175,12 +175,13 @@ def write_loss(iterations, trainer, train_writer):
     for m in members:
         train_writer.add_scalar(m, getattr(trainer, m), iterations + 1)
 
+
 def write_loss_new(iterations, trainer, train_writer):
     total_loss = {'gen_loss': trainer.loss_gen_total,
                   'dis_loss': trainer.loss_dis_total,
-                  'sia_loss':trainer.loss_sia_total}
+                  'sia_loss': trainer.loss_sia_total}
 
-    gen_loss = {'adv_a': trainer.loss_gen_adv_a, 'adv_b':trainer.loss_gen_adv_b,
+    gen_loss = {'adv_a': trainer.loss_gen_adv_a, 'adv_b': trainer.loss_gen_adv_b,
                 'recon_x_a': trainer.loss_gen_recon_x_a, 'recon_s_a': trainer.loss_gen_recon_s_a,
                 'recon_c_a': trainer.loss_gen_recon_c_a, 'recon_x_b': trainer.loss_gen_recon_x_b,
                 'recon_s_b': trainer.loss_gen_recon_s_b, 'recon_c_b': trainer.loss_gen_recon_c_b,
@@ -193,7 +194,7 @@ def write_loss_new(iterations, trainer, train_writer):
 
     sia_loss = {'tra_ab': trainer.loss_sia_tra_ab, 'tra_ba': trainer.loss_sia_tra_ba,
                 'tra_aba': trainer.loss_sia_tra_aba, 'tra_bab': trainer.loss_sia_tra_bab,
-                'sc_a':trainer.loss_sia_sc_a, 'sc_b': trainer.loss_sia_sc_b,
+                'sc_a': trainer.loss_sia_sc_a, 'sc_b': trainer.loss_sia_sc_b,
                 'sc_ab': trainer.loss_sia_sc_ab, 'sc_ba': trainer.loss_sia_sc_ba,
                 'sc_aba': trainer.loss_sia_sc_aba, 'sc_bab': trainer.loss_sia_sc_bab,
                 'total': trainer.loss_sia_total}

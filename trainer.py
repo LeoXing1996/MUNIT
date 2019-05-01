@@ -37,7 +37,7 @@ class MUNIT_Trainer(nn.Module):
                                         lr=lr, betas=(beta1, beta2), weight_decay=hyperparameters['weight_decay'])
         self.gen_opt = torch.optim.Adam([p for p in gen_params if p.requires_grad],
                                         lr=lr, betas=(beta1, beta2), weight_decay=hyperparameters['weight_decay'])
-        self.sia_opt = torch.optim.Adam([p for p in gen_params if p.requires_grad],
+        self.sia_opt = torch.optim.Adam([p for p in sia_params if p.requires_grad],
                                         lr=lr, betas=(beta1, beta2), weight_decay=hyperparameters['weight_decay'])
         self.dis_scheduler = get_scheduler(self.dis_opt, hyperparameters)
         self.gen_scheduler = get_scheduler(self.gen_opt, hyperparameters)
@@ -196,9 +196,11 @@ class MUNIT_Trainer(nn.Module):
         s_b = Variable(torch.randn(x_b.size(0), self.style_dim, 1, 1).cuda())
         c_a, s_a_prime = self.gen_a.encode(x_a)
         c_b, s_b_prime = self.gen_b.encode(x_b)
+
         # decode (within domain)
-        x_a_recon = self.gen_a.decode(c_a, s_a_prime)
-        x_b_recon = self.gen_b.decode(c_b, s_b_prime)
+        # x_a_recon = self.gen_a.decode(c_a, s_a_prime)
+        # x_b_recon = self.gen_b.decode(c_b, s_b_prime)
+
         # decode (cross domain)
         x_ba = self.gen_a.decode(c_b, s_a)
         x_ab = self.gen_b.decode(c_a, s_b)
@@ -206,8 +208,8 @@ class MUNIT_Trainer(nn.Module):
         c_b_recon, s_a_recon = self.gen_a.encode(x_ba)
         c_a_recon, s_b_recon = self.gen_b.encode(x_ab)
         # decode again (if needed)
-        x_aba = self.gen_a.decode(c_a_recon, s_a_prime) if recon_x_cyc_w  else 0
-        x_bab = self.gen_b.decode(c_b_recon, s_b_prime) if recon_x_cyc_w  else 0
+        x_aba = self.gen_a.decode(c_a_recon, s_a_prime) if recon_x_cyc_w else 0
+        x_bab = self.gen_b.decode(c_b_recon, s_b_prime) if recon_x_cyc_w else 0
 
         # split data
         new_bz = hyperparameters['batch_size'] // 2

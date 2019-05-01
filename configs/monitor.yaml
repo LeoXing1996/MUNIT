@@ -24,7 +24,7 @@ recon_x_w: 10                 # weight of image reconstruction loss
 recon_s_w: 1                  # weight of style reconstruction loss
 recon_c_w: 1                  # weight of content reconstruction loss
 recon_x_cyc_w: 10             # weight of explicit style augmented cycle consistency loss
-tra_w: 5
+tra_w: 0.5
 sia_tra_w: 1
 sia_sc_w: 1
 vgg_w: 0                      # weight of domain-invariant perceptual loss
@@ -51,7 +51,7 @@ sia:
   travel_dim: 256
   norm: bn
   activ: relu
-  margin: 10
+  margin: 20
   n_downsample: 4
   pad_type: reflect
 # data options
@@ -61,4 +61,6 @@ num_workers: 8                              # number of data loading threads
 new_size: 256                               # first resize the shortest image side to this size
 crop_image_height: 256                      # random crop image of this height
 crop_image_width: 256                       # random crop image of this width
-data_root: ./datasets/sunshine2rain     # dataset folder location
+data_root: ./datasets/monitor               # dataset folder location
+rain_dir: "4.09"
+sun_dir: "4.10"

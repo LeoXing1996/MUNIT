@@ -18,7 +18,7 @@ class MUNIT_Trainer(nn.Module):
         self.gen_b = AdaINGen(hyperparameters['input_dim_b'], hyperparameters['gen'])  # auto-encoder for domain b
         self.dis_a = MsImageDis(hyperparameters['input_dim_a'], hyperparameters['dis'])  # discriminator for domain a
         self.dis_b = MsImageDis(hyperparameters['input_dim_b'], hyperparameters['dis'])  # discriminator for domain b
-        self.sia = Siamese(3, 256, hyperparameters['sia'])
+        self.sia = Siamese(3, hyperparameters['new_size'], hyperparameters['sia'])
         self.instancenorm = nn.InstanceNorm2d(512, affine=False)
         self.style_dim = hyperparameters['gen']['style_dim']
 

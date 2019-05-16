@@ -85,7 +85,7 @@ while True:
         # Dump training stats in log file
         if (iterations + 1) % config['log_iter'] == 0:
             print("Iteration: %08d/%08d" % (iterations + 1, max_iter))
-            write_loss_new(iterations, trainer, train_writer)
+            write_loss_new(iterations+1, trainer, train_writer, output_directory)
 
         # Write images
         if (iterations + 1) % config['image_save_iter'] == 0:

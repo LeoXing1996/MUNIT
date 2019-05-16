@@ -37,7 +37,7 @@ class MUNIT_Trainer(nn.Module):
                                         lr=lr, betas=(beta1, beta2), weight_decay=hyperparameters['weight_decay'])
         self.gen_opt = torch.optim.Adam([p for p in gen_params if p.requires_grad],
                                         lr=lr, betas=(beta1, beta2), weight_decay=hyperparameters['weight_decay'])
-        self.sia_opt = torch.optim.Adam([p for p in gen_params if p.requires_grad],
+        self.sia_opt = torch.optim.Adam([p for p in sia_params if p.requires_grad],
                                         lr=lr, betas=(beta1, beta2), weight_decay=hyperparameters['weight_decay'])
         self.dis_scheduler = get_scheduler(self.dis_opt, hyperparameters)
         self.gen_scheduler = get_scheduler(self.gen_opt, hyperparameters)

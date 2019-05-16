@@ -3,6 +3,7 @@ Copyright (C) 2018 NVIDIA Corporation.  All rights reserved.
 Licensed under the CC BY-NC-SA 4.0 license (https://creativecommons.org/licenses/by-nc-sa/4.0/legalcode).
 """
 from utils import get_all_data_loaders, prepare_sub_folder, write_html, write_loss, write_loss_new, get_config, write_2images, Timer
+from own_dataloader import get_all_data_loader_pair
 import argparse
 from torch.autograd import Variable
 from trainer import MUNIT_Trainer, UNIT_Trainer
@@ -18,10 +19,11 @@ import tensorboardX
 import shutil
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--config', type=str, default='configs/shine2rain_RFS256_folder.yaml', help='Path to the config file.')
+parser.add_argument('--config', type=str, default='configs/shine2rain.yaml', help='Path to the config file.')
 parser.add_argument('--output_path', type=str, default='.', help="outputs path")
 parser.add_argument("--resume", action="store_true")
 parser.add_argument('--trainer', type=str, default='MUNIT', help="MUNIT|UNIT")
+parser.add_argument('--gpu', type=int, default='0')
 opts = parser.parse_args()
 
 cudnn.benchmark = True
@@ -39,15 +41,25 @@ elif opts.trainer == 'UNIT':
     trainer = UNIT_Trainer(config)
 else:
     sys.exit("Only support MUNIT|UNIT")
+
+torch.cuda.set_device(opts.gpu)
+
 trainer.cuda()
-train_loader_a, train_loader_b, test_loader_a, test_loader_b = get_all_data_loaders(config)
-train_display_images_a = torch.stack([train_loader_a.dataset[i] for i in range(display_size)]).cuda()
-train_display_images_b = torch.stack([train_loader_b.dataset[i] for i in range(display_size)]).cuda()
-test_display_images_a = torch.stack([test_loader_a.dataset[i] for i in range(display_size)]).cuda()
-test_display_images_b = torch.stack([test_loader_b.dataset[i] for i in range(display_size)]).cuda()
+train_loader, test_loader = get_all_data_loader_pair(config)
+train_display_images_a = torch.stack([train_loader.dataset[i]['r_img'] for i in range(display_size)]).cuda()
+train_display_images_b = torch.stack([train_loader.dataset[i]['s_img'] for i in range(display_size)]).cuda()
+test_display_images_a = torch.stack([test_loader.dataset[i]['r_img'] for i in range(display_size)]).cuda()
+test_display_images_b = torch.stack([test_loader.dataset[i]['s_img'] for i in range(display_size)]).cuda()
+# train_loader_a, train_loader_b, test_loader_a, test_loader_b = get_all_data_loaders(config)
+# train_display_images_a = torch.stack([train_loader_a.dataset[i] for i in range(display_size)]).cuda()
+# train_display_images_b = torch.stack([train_loader_b.dataset[i] for i in range(display_size)]).cuda()
+# test_display_images_a = torch.stack([test_loader_a.dataset[i] for i in range(display_size)]).cuda()
+# test_display_images_b = torch.stack([test_loader_b.dataset[i] for i in range(display_size)]).cuda()
 
 # Setup logger and output folders
-model_name = os.path.splitext(os.path.basename(opts.config))[0]
+model_name = os.path.splitext(os.path.basename(opts.config))[0] + \
+             '_tra_' + str(config['sia']['travel_dim']) + \
+             '_mar_' + str(config['sia']['margin'])
 train_writer = tensorboardX.SummaryWriter(os.path.join(opts.output_path + "/logs", model_name))
 output_directory = os.path.join(opts.output_path + "/outputs", model_name)
 checkpoint_directory, image_directory = prepare_sub_folder(output_directory)
@@ -56,7 +68,10 @@ shutil.copy(opts.config, os.path.join(output_directory, 'config.yaml')) # copy c
 # Start training
 iterations = trainer.resume(checkpoint_directory, hyperparameters=config) if opts.resume else 0
 while True:
-    for it, (images_a, images_b) in enumerate(zip(train_loader_a, train_loader_b)):
+    # for it, (images_a, images_b) in enumerate(zip(train_loader_a, train_loader_b)):
+    for it, img_pair in enumerate(train_loader):
+        images_a = img_pair['r_img']
+        images_b = img_pair['s_img']
         trainer.update_learning_rate()
         images_a, images_b = images_a.cuda().detach(), images_b.cuda().detach()
 
@@ -70,7 +85,7 @@ while True:
         # Dump training stats in log file
         if (iterations + 1) % config['log_iter'] == 0:
             print("Iteration: %08d/%08d" % (iterations + 1, max_iter))
-            write_loss_new(iterations, trainer, train_writer)
+            write_loss_new(iterations+1, trainer, train_writer, output_directory)
 
         # Write images
         if (iterations + 1) % config['image_save_iter'] == 0:

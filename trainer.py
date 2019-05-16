@@ -18,7 +18,7 @@ class MUNIT_Trainer(nn.Module):
         self.gen_b = AdaINGen(hyperparameters['input_dim_b'], hyperparameters['gen'])  # auto-encoder for domain b
         self.dis_a = MsImageDis(hyperparameters['input_dim_a'], hyperparameters['dis'])  # discriminator for domain a
         self.dis_b = MsImageDis(hyperparameters['input_dim_b'], hyperparameters['dis'])  # discriminator for domain b
-        self.sia = Siamese(3, 256, hyperparameters['sia'])
+        self.sia = Siamese(3, hyperparameters['new_size'], hyperparameters['sia'])
         self.instancenorm = nn.InstanceNorm2d(512, affine=False)
         self.style_dim = hyperparameters['gen']['style_dim']
 
@@ -196,9 +196,11 @@ class MUNIT_Trainer(nn.Module):
         s_b = Variable(torch.randn(x_b.size(0), self.style_dim, 1, 1).cuda())
         c_a, s_a_prime = self.gen_a.encode(x_a)
         c_b, s_b_prime = self.gen_b.encode(x_b)
+
         # decode (within domain)
-        x_a_recon = self.gen_a.decode(c_a, s_a_prime)
-        x_b_recon = self.gen_b.decode(c_b, s_b_prime)
+        # x_a_recon = self.gen_a.decode(c_a, s_a_prime)
+        # x_b_recon = self.gen_b.decode(c_b, s_b_prime)
+
         # decode (cross domain)
         x_ba = self.gen_a.decode(c_b, s_a)
         x_ab = self.gen_b.decode(c_a, s_b)
@@ -206,8 +208,8 @@ class MUNIT_Trainer(nn.Module):
         c_b_recon, s_a_recon = self.gen_a.encode(x_ba)
         c_a_recon, s_b_recon = self.gen_b.encode(x_ab)
         # decode again (if needed)
-        x_aba = self.gen_a.decode(c_a_recon, s_a_prime) if recon_x_cyc_w  else 0
-        x_bab = self.gen_b.decode(c_b_recon, s_b_prime) if recon_x_cyc_w  else 0
+        x_aba = self.gen_a.decode(c_a_recon, s_a_prime) if recon_x_cyc_w else 0
+        x_bab = self.gen_b.decode(c_b_recon, s_b_prime) if recon_x_cyc_w else 0
 
         # split data
         new_bz = hyperparameters['batch_size'] // 2

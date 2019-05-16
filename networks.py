@@ -63,19 +63,6 @@ class Siamese(nn.Module):
         loss = torch.mean(loss)
         return loss
 
-    # def loss(self, imga, imgA, imgb, imgB, margin):
-    #     tra_ab = self.cal_travel(imga, imgb)
-    #     tra_AB = self.cal_travel(imgA, imgB)
-    #     loss_tra = self.loss_travel(tra_ab, tra_AB)
-    #     loss_sc = self.loss_sc(tra_ab, tra_AB, margin)
-    #     loss = self.weight_tra * loss_tra + self.weight_sc * loss_sc
-    #     log = {
-    #         'loss_tra': loss_tra,
-    #         'loss_sc': loss_sc,
-    #         'loss_total': loss
-    #     }
-    #     return loss, log
-
     def sample(self, imga, imgA, imgb, imgB):
         with torch.no_grad():
             tra_ab = self.cal_travel(imga, imgb)
